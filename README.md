@@ -17,12 +17,14 @@
 ### 使用 Node.js 运行
 
 ```bash
+# 初始化项目
+npm init -y
+
 # 安装依赖
-npm install
+npm install express
 
 # 启动服务（默认端口 8020）
 node server.js
-
 ```
 
 ### 使用 Docker 运行
