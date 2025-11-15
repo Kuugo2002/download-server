@@ -34,7 +34,7 @@ node server.js
 docker build -t download-server .
 
 # 运行容器（映射主机端口 8000 到容器端口 8020）
-docker run -p 8000:8020 -d download-server
+docker run -p 8020:8020 -d download-server
 
 # 从dockerhub拉取镜像
 docker run -p 8000:80 -d kuugo/download-server:0.1
