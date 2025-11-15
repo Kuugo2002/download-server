@@ -1,5 +1,5 @@
 # 使用 Node.js 22 官方镜像
-FROM node:22
+FROM node:22-alpine
 
 # 设置工作目录
 WORKDIR /usr/src/app
