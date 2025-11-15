@@ -11,7 +11,7 @@ COPY server.js .
 RUN npm init -y && \
     npm install express
 
-EXPOSE 80
+EXPOSE 8020
 
 # 启动命令
 CMD ["node", "server.js"]
