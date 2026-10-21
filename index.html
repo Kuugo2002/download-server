@@ -1,0 +1,102 @@
+  <!DOCTYPE html>
+  <html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空午HTTP代理下载</title>
+    <link rel="icon" href="data:,"> <!-- 防止浏览器请求 /favicon.ico -->
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+        color: #333;
+      }
+      h1 {
+        color: #2c3e50;
+        border-bottom: 2px solid #3498db;
+        padding-bottom: 10px;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      }
+      code {
+        background: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: monospace;
+      }
+      .example {
+        background: #e8f4fc;
+        padding: 15px;
+        border-left: 4px solid #3498db;
+        margin: 20px 0;
+        border-radius: 0 4px 4px 0;
+      }
+      .note {
+        background: #fff8e6;
+        padding: 15px;
+        border-left: 4px solid #ffc107;
+        margin: 20px 0;
+        border-radius: 0 4px 4px 0;
+      }
+      .features {
+        margin: 25px 0;
+      }
+      .features li {
+        margin-bottom: 10px;
+      }
+      a {
+        color: #3498db;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>代理下载服务</h1>
+      
+      <p>由空午搭建的HTTP代理服务器，可用于绕过CORS限制或作为网络请求中转站。</p>
+      
+      <div class="features">
+        <h2>功能特点：</h2>
+        <ul>
+          <li>支持所有HTTP方法（GET、POST、PUT、DELETE等）</li>
+          <li>自动移除Origin和Referer请求头</li>
+          <li>自动设置目标 Host 请求头</li>
+          <li>自动跟随下载重定向</li>
+          <li>流式传输响应内容，支持大文件</li>
+          <li>设置跨域头（Access-Control-Allow-Origin: *）</li>
+        </ul>
+      </div>
+      
+      <h2>使用方法：</h2>
+      <div class="example">
+        <p>在代理URL后直接添加目标URL：</p>
+        <code>https://download.kuugo.top/https://目标网站地址</code>
+        
+        <p>示例：</p>
+        <code>https://download.kuugo.top/https://example.com/download.zip</code>
+      </div>
+      
+      <div class="note">
+        <h3>注意事项：</h3>
+        <ul>
+          <li>目标URL需要完整包含协议（http:// 或 https://）</li>
+          <li>支持 Range 断点续传和 HEAD 请求</li>
+          <li>关闭下载连接后会停止上游传输</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+  </html>
+

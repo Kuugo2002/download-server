@@ -1,0 +1,12 @@
+{
+  "name": "download-server",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Streaming HTTP download proxy",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT"
+}

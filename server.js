@@ -1,232 +1,169 @@
-const express = require('express');
-const { Readable } = require('stream');
-const app = express();
-const PORT = process.env.PORT || 8020;
+'use strict';
 
-// 特殊规则配置
-const specialCases = [
-  {
-    pattern: /.*/, // 匹配所有域名
-    rules: {
-      "origin": "DELETE",
-      "referer": "DELETE",
-      "host": "KEEP", // 保留 Host 头
-      // 可添加更多规则
-    }
-  }
-];
+const http = require('node:http');
+const https = require('node:https');
+const { readFileSync } = require('node:fs');
+const { pipeline } = require('node:stream');
 
-// 处理请求头修改
-function modifyHeaders(headers, hostname) {
-  const newHeaders = { ...headers };
-  
-  for (const { pattern, rules } of specialCases) {
-    if (pattern.test(hostname)) {
-      for (const [header, action] of Object.entries(rules)) {
-        const lowerHeader = header.toLowerCase();
-        
-        if (action === "DELETE") {
-          delete newHeaders[lowerHeader];
-        } else if (action !== "KEEP") {
-          newHeaders[lowerHeader] = action;
-        }
-      }
-      break;
-    }
+const homepage = readFileSync(`${__dirname}/index.html`);
+const hopByHop = new Set([
+  'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+  'te', 'trailer', 'transfer-encoding', 'upgrade',
+]);
+
+function cleanHeaders(headers) {
+  const blocked = new Set(hopByHop);
+  for (const name of String(headers.connection || '').split(',')) {
+    blocked.add(name.trim().toLowerCase());
   }
-  
-  // 确保 Host 头正确
-  if (!newHeaders.host) {
-    newHeaders.host = hostname;
-  }
-  
-  return newHeaders;
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => !blocked.has(name)));
 }
 
-// 流式传输响应体
-async function streamResponse(response, res) {
-  // 复制响应头
-  for (const [key, value] of response.headers) {
-    if (key.toLowerCase() !== 'content-encoding') {
-      res.setHeader(key, value);
-    }
+function parseTarget(value) {
+  const target = new URL(value);
+  if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password) {
+    throw new Error('目标地址必须是 HTTP/HTTPS URL，且不能包含用户名或密码');
   }
-  
-  // 设置 CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  
-  // 流式传输
-  const reader = response.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    res.write(value);
-  }
-  res.end();
+  return target;
 }
 
-// 添加根路径说明页面
-app.get('/', (req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(`
-  <!DOCTYPE html>
-  <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>空午HTTP代理下载</title>
-    <link rel="icon" href="data:,"> <!-- 防止浏览器请求 /favicon.ico -->
-    <style>
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        line-height: 1.6;
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 20px;
-        background-color: #f5f5f5;
-        color: #333;
-      }
-      h1 {
-        color: #2c3e50;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 10px;
-      }
-      .container {
-        background: white;
-        padding: 30px;
-        border-radius: 8px;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-      }
-      code {
-        background: #f8f9fa;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: monospace;
-      }
-      .example {
-        background: #e8f4fc;
-        padding: 15px;
-        border-left: 4px solid #3498db;
-        margin: 20px 0;
-        border-radius: 0 4px 4px 0;
-      }
-      .note {
-        background: #fff8e6;
-        padding: 15px;
-        border-left: 4px solid #ffc107;
-        margin: 20px 0;
-        border-radius: 0 4px 4px 0;
-      }
-      .features {
-        margin: 25px 0;
-      }
-      .features li {
-        margin-bottom: 10px;
-      }
-      a {
-        color: #3498db;
-        text-decoration: none;
-      }
-      a:hover {
-        text-decoration: underline;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>代理下载服务</h1>
-      
-      <p>由空午搭建的HTTP代理服务器，可用于绕过CORS限制或作为网络请求中转站。</p>
-      
-      <div class="features">
-        <h2>功能特点：</h2>
-        <ul>
-          <li>支持所有HTTP方法（GET、POST、PUT、DELETE等）</li>
-          <li>自动移除Origin和Referer请求头</li>
-          <li>保留Host请求头确保正常访问</li>
-          <li>自动处理重定向（301/302）</li>
-          <li>流式传输响应内容，支持大文件</li>
-          <li>设置跨域头（Access-Control-Allow-Origin: *）</li>
-        </ul>
-      </div>
-      
-      <h2>使用方法：</h2>
-      <div class="example">
-        <p>在代理URL后直接添加目标URL：</p>
-        <code>https://download.kuugo.top/https://目标网站地址</code>
-        
-        <p>示例：</p>
-        <code>https://download.kuugo.top/https://example.com/download.zip</code>
-      </div>
-      
-      <div class="note">
-        <h3>注意事项：</h3>
-        <ul>
-          <li>目标URL需要完整包含协议（http:// 或 https://）</li>
-          <li>不支持需要身份验证的网站</li>
-          <li>性能有限，不建议传输超大文件</li>
-        </ul>
-      </div>
-    </div>
-  </body>
-  </html>
-  `);
-});
+function corsHeaders(req) {
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
+    'access-control-allow-headers': req.headers['access-control-request-headers'] || '*',
+    'access-control-expose-headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Disposition, ETag, Last-Modified',
+  };
+}
 
-// 处理 favicon.ico 请求 - 防止无效URL错误
-app.get('/favicon.ico', (req, res) => {
-  res.status(204).end(); // 返回无内容状态
-});
+function createServer({ timeoutMs = 60_000, maxRedirects = 10 } = {}) {
+  return http.createServer((req, res) => {
+    const cors = corsHeaders(req);
+    function fail(status, message) {
+      if (res.destroyed) return;
+      if (res.headersSent) return res.destroy();
+      res.writeHead(status, { ...cors, 'content-type': 'text/plain; charset=utf-8' });
+      res.end(message);
+    }
 
-// 处理代理请求
-app.all('/*splat', async (req, res) => {
-  try {
-    // 从路径中提取目标 URL
-    const targetUrl = req.originalUrl.slice(1);
+    if (req.url === '/' && ['GET', 'HEAD'].includes(req.method)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': homepage.length });
+      return res.end(req.method === 'HEAD' ? undefined : homepage);
+    }
+    if (req.url === '/favicon.ico') {
+      res.writeHead(204);
+      return res.end();
+    }
 
-    // 解析目标 URL
-    const { hostname, protocol, pathname, search, hash } = new URL(targetUrl);
-    const fullUrl = `${protocol}//${hostname}${pathname}${search}${hash}`;
-    
-    // 准备请求头
-    const headers = modifyHeaders(req.headers, hostname);
-    
-    // 准备请求选项
-    const options = {
-      method: req.method,
-      headers: headers,
-      redirect: 'follow'
+    let target;
+    try {
+      target = parseTarget(req.url.slice(1));
+    } catch {
+      return fail(400, '目标 URL 无效，请使用 /https://example.com/file.zip');
+    }
+    if (req.method === 'OPTIONS' && req.headers['access-control-request-method']) {
+      res.writeHead(204, { ...cors, 'access-control-max-age': '600' });
+      return res.end();
+    }
+
+    const headers = cleanHeaders(req.headers);
+    delete headers.host;
+    delete headers.origin;
+    delete headers.referer;
+    // Expect is handled by this server; do not ask the upstream to repeat the handshake.
+    delete headers.expect;
+    let upstreamRequest;
+    let upstreamResponse;
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+      upstreamRequest?.destroy();
+      upstreamResponse?.destroy();
     };
-    
-    // 处理请求体 (非 GET/HEAD 请求)
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      const chunks = [];
-      for await (const chunk of req) {
-        chunks.push(chunk);
-      }
-      options.body = Buffer.concat(chunks);
-    }
-    
-    // 使用 Node.js 18+ 内置 fetch
-    const response = await fetch(fullUrl, options);
-    
-    // 处理重定向
-    if ([301, 302, 307, 308].includes(response.status)) {
-      const location = response.headers.get('location');
-      return res.redirect(response.status, `/${location}`);
-    }
-    
-    // 流式传输响应
-    await streamResponse(response, res);
-    
-  } catch (error) {
-    console.error('代理错误:', error);
-    res.status(500).send(`代理错误: ${error.message}`);
-  }
-});
+    req.on('aborted', stop);
+    req.on('error', stop);
+    res.on('close', stop);
+    res.on('error', stop);
 
-// 启动服务器
-app.listen(PORT, () => {
-  console.log(`代理服务器运行在 http://localhost:${PORT}`);
-  console.log(`使用示例: http://localhost:${PORT}/https://example.com/test.zip`);
-});
+    function forward(url, redirects) {
+      if (stopped) return;
+      const transport = url.protocol === 'https:' ? https : http;
+      upstreamRequest = transport.request(url, { method: req.method, headers }, (response) => {
+        upstreamResponse = response;
+        const location = response.headers.location;
+        const isRedirect = [301, 302, 303, 307, 308].includes(response.statusCode) && location;
+        if (isRedirect && ['GET', 'HEAD'].includes(req.method)) {
+          if (redirects >= maxRedirects) {
+            response.destroy();
+            return fail(502, '上游重定向次数过多');
+          }
+          let next;
+          try {
+            next = parseTarget(new URL(location, url).href);
+          } catch {
+            response.destroy();
+            return fail(502, '上游重定向地址无效');
+          }
+          if (next.origin !== url.origin) {
+            delete headers.authorization;
+            delete headers.cookie;
+          }
+          response.destroy();
+          return forward(next, redirects + 1);
+        }
+
+        const responseHeaders = cleanHeaders(response.headers);
+        if (isRedirect) {
+          // Streamed uploads cannot be replayed. Let the client follow the proxy URL.
+          try {
+            responseHeaders.location = `/${parseTarget(new URL(location, url).href).href}`;
+          } catch {
+            response.destroy();
+            return fail(502, '上游重定向地址无效');
+          }
+        }
+        res.writeHead(response.statusCode, { ...responseHeaders, ...cors });
+        // Native HTTP preserves compressed bytes and Content-Length exactly.
+        pipeline(response, res, (error) => {
+          if (error) stop();
+        });
+      });
+      upstreamRequest.setTimeout(timeoutMs, () => {
+        fail(504, '上游连接超时');
+        stop();
+      });
+      upstreamRequest.on('error', () => {
+        if (!stopped) fail(502, '无法连接上游服务器');
+      });
+      if (redirects === 0 && !['GET', 'HEAD'].includes(req.method)) {
+        // pipe applies backpressure while keeping upstream errors available for a 502 response.
+        req.pipe(upstreamRequest);
+      } else {
+        upstreamRequest.end();
+      }
+    }
+    forward(target, 0);
+  });
+}
+
+if (require.main === module) {
+  const port = Number(process.env.PORT || 8020);
+  const timeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS || 60_000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    console.error('PORT 必须为 1–65535，UPSTREAM_TIMEOUT_MS 必须为正整数');
+    process.exit(1);
+  }
+  const server = createServer({ timeoutMs });
+  server.listen(port, () => console.log(`代理服务器运行在 http://localhost:${port}`));
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, () => {
+      server.close(() => process.exit(0));
+      setTimeout(() => {
+        server.closeAllConnections();
+        process.exit(0);
+      }, 10_000).unref();
+    });
+  }
+}
+
+module.exports = { createServer };
